@@ -14,8 +14,8 @@ type boltDatastore struct {
 	bucketName []byte
 }
 
-func NewBoltDatastore(path, bucket string) (ds.Datastore, error) {
-	db, err := bolt.Open(path, 0600, nil)
+func NewBoltDatastore(path, bucket string) (*boltDatastore, error) {
+	db, err := bolt.Open(path+"/bolt.db", 0600, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -35,6 +35,10 @@ func NewBoltDatastore(path, bucket string) (ds.Datastore, error) {
 	}, nil
 }
 
+func (bd *boltDatastore) Close() error {
+	return bd.db.Close()
+}
+
 func (bd *boltDatastore) Delete(key ds.Key) error {
 	return bd.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bd.bucketName).Delete(key.Bytes())
@@ -42,15 +46,31 @@ func (bd *boltDatastore) Delete(key ds.Key) error {
 }
 
 func (bd *boltDatastore) Get(key ds.Key) (interface{}, error) {
-	var out interface{}
+	var out []byte
 	err := bd.db.View(func(tx *bolt.Tx) error {
-		out = tx.Bucket(bd.bucketName).Get(key.Bytes())
+		mmval := tx.Bucket(bd.bucketName).Get(key.Bytes())
+		if mmval == nil {
+			return ds.ErrNotFound
+		}
+		out = make([]byte, len(mmval))
+		copy(out, mmval)
 		return nil
 	})
-	if out == nil {
-		return nil, ds.ErrNotFound
+	if err != nil {
+		return nil, err
 	}
+
 	return out, err
+}
+
+func (bd *boltDatastore) ConsumeValue(key ds.Key, f func([]byte) error) error {
+	return bd.db.View(func(tx *bolt.Tx) error {
+		mmval := tx.Bucket(bd.bucketName).Get(key.Bytes())
+		if mmval == nil {
+			return ds.ErrNotFound
+		}
+		return f(mmval)
+	})
 }
 
 func (bd *boltDatastore) Has(key ds.Key) (bool, error) {
@@ -133,7 +153,6 @@ func (bd *boltDatastore) Query(q query.Query) (query.Results, error) {
 
 			return nil
 		})
-
 	})
 
 	// go wait on the worker (without signaling close)
@@ -149,4 +168,4 @@ func (bd *boltDatastore) Query(q query.Query) (query.Results, error) {
 	return qr, nil
 }
 
-var _ ds.Datastore = &boltDatastore{}
+func (bd *boltDatastore) IsThreadSafe() {}
