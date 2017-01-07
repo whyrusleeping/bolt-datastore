@@ -2,9 +2,9 @@ package boltds
 
 import (
 	bolt "github.com/boltdb/bolt"
-	ds "github.com/jbenet/go-datastore"
-	"github.com/jbenet/go-datastore/Godeps/_workspace/src/github.com/jbenet/goprocess"
-	query "github.com/jbenet/go-datastore/query"
+	ds "github.com/ipfs/go-datastore"
+	query "github.com/ipfs/go-datastore/query"
+	"github.com/jbenet/goprocess"
 )
 
 // boltDatastore implements ds.Datastore
@@ -169,3 +169,38 @@ func (bd *boltDatastore) Query(q query.Query) (query.Results, error) {
 }
 
 func (bd *boltDatastore) IsThreadSafe() {}
+
+type boltBatch struct {
+	tx  *bolt.Tx
+	bkt *bolt.Bucket
+}
+
+func (bd *boltDatastore) Batch() (ds.Batch, error) {
+	tx, err := bd.db.Begin(true)
+	if err != nil {
+		return nil, err
+	}
+
+	buck := tx.Bucket(bd.bucketName)
+
+	return &boltBatch{tx: tx, bkt: buck}, nil
+}
+
+func (bb *boltBatch) Commit() error {
+	return bb.tx.Commit()
+}
+
+func (bb *boltBatch) Delete(k ds.Key) error {
+	return bb.bkt.Delete(k.Bytes())
+}
+
+func (bb *boltBatch) Put(k ds.Key, val interface{}) error {
+	bval, ok := val.([]byte)
+	if !ok {
+		return ds.ErrInvalidType
+	}
+
+	return bb.bkt.Put(k.Bytes(), bval)
+}
+
+var _ ds.Batching = (*boltDatastore)(nil)

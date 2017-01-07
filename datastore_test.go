@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	ds "github.com/jbenet/go-datastore"
+	ds "github.com/ipfs/go-datastore"
 )
 
 func TestBasicPutGet(t *testing.T) {
