@@ -7,14 +7,15 @@ import (
 	"github.com/jbenet/goprocess"
 )
 
-// boltDatastore implements ds.Datastore
+// BoltDatastore implements ds.Datastore
 // TODO: use buckets to represent the heirarchy of the ds.Keys
-type boltDatastore struct {
+type BoltDatastore struct {
 	db         *bolt.DB
 	bucketName []byte
+	Path       string
 }
 
-func NewBoltDatastore(path, bucket string) (*boltDatastore, error) {
+func NewBoltDatastore(path, bucket string) (*BoltDatastore, error) {
 	db, err := bolt.Open(path+"/bolt.db", 0600, nil)
 	if err != nil {
 		return nil, err
@@ -29,23 +30,24 @@ func NewBoltDatastore(path, bucket string) (*boltDatastore, error) {
 		return nil, err
 	}
 
-	return &boltDatastore{
+	return &BoltDatastore{
 		db:         db,
 		bucketName: []byte(bucket),
+		Path:       path + "/bolt.db",
 	}, nil
 }
 
-func (bd *boltDatastore) Close() error {
+func (bd *BoltDatastore) Close() error {
 	return bd.db.Close()
 }
 
-func (bd *boltDatastore) Delete(key ds.Key) error {
+func (bd *BoltDatastore) Delete(key ds.Key) error {
 	return bd.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bd.bucketName).Delete(key.Bytes())
 	})
 }
 
-func (bd *boltDatastore) Get(key ds.Key) (interface{}, error) {
+func (bd *BoltDatastore) Get(key ds.Key) (interface{}, error) {
 	var out []byte
 	err := bd.db.View(func(tx *bolt.Tx) error {
 		mmval := tx.Bucket(bd.bucketName).Get(key.Bytes())
@@ -63,7 +65,7 @@ func (bd *boltDatastore) Get(key ds.Key) (interface{}, error) {
 	return out, err
 }
 
-func (bd *boltDatastore) ConsumeValue(key ds.Key, f func([]byte) error) error {
+func (bd *BoltDatastore) ConsumeValue(key ds.Key, f func([]byte) error) error {
 	return bd.db.View(func(tx *bolt.Tx) error {
 		mmval := tx.Bucket(bd.bucketName).Get(key.Bytes())
 		if mmval == nil {
@@ -73,7 +75,7 @@ func (bd *boltDatastore) ConsumeValue(key ds.Key, f func([]byte) error) error {
 	})
 }
 
-func (bd *boltDatastore) Has(key ds.Key) (bool, error) {
+func (bd *BoltDatastore) Has(key ds.Key) (bool, error) {
 	var found bool
 	err := bd.db.View(func(tx *bolt.Tx) error {
 		val := tx.Bucket(bd.bucketName).Get(key.Bytes())
@@ -83,7 +85,7 @@ func (bd *boltDatastore) Has(key ds.Key) (bool, error) {
 	return found, err
 }
 
-func (bd *boltDatastore) Put(key ds.Key, val interface{}) error {
+func (bd *BoltDatastore) Put(key ds.Key, val interface{}) error {
 	bval, ok := val.([]byte)
 	if !ok {
 		return ds.ErrInvalidType
@@ -93,7 +95,7 @@ func (bd *boltDatastore) Put(key ds.Key, val interface{}) error {
 	})
 }
 
-func (bd *boltDatastore) PutMany(data map[ds.Key]interface{}) error {
+func (bd *BoltDatastore) PutMany(data map[ds.Key]interface{}) error {
 	return bd.db.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket(bd.bucketName)
 		for k, v := range data {
@@ -110,7 +112,7 @@ func (bd *boltDatastore) PutMany(data map[ds.Key]interface{}) error {
 	})
 }
 
-func (bd *boltDatastore) Query(q query.Query) (query.Results, error) {
+func (bd *BoltDatastore) Query(q query.Query) (query.Results, error) {
 	qrb := query.NewResultBuilder(q)
 	qrb.Process.Go(func(worker goprocess.Process) {
 		bd.db.View(func(tx *bolt.Tx) error {
@@ -168,14 +170,14 @@ func (bd *boltDatastore) Query(q query.Query) (query.Results, error) {
 	return qr, nil
 }
 
-func (bd *boltDatastore) IsThreadSafe() {}
+func (bd *BoltDatastore) IsThreadSafe() {}
 
 type boltBatch struct {
 	tx  *bolt.Tx
 	bkt *bolt.Bucket
 }
 
-func (bd *boltDatastore) Batch() (ds.Batch, error) {
+func (bd *BoltDatastore) Batch() (ds.Batch, error) {
 	tx, err := bd.db.Begin(true)
 	if err != nil {
 		return nil, err
@@ -203,4 +205,4 @@ func (bb *boltBatch) Put(k ds.Key, val interface{}) error {
 	return bb.bkt.Put(k.Bytes(), bval)
 }
 
-var _ ds.Batching = (*boltDatastore)(nil)
+var _ ds.Batching = (*BoltDatastore)(nil)
